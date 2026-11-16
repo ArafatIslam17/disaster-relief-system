@@ -41,7 +41,7 @@ export const PATCH = route<Params>(async (req, { params }) => {
     await notifyUsers(tx, await activeCoordinatorIds(tx, members.map((m) => m.organisationId)), {
       type: "OPERATION_CLOSED",
       message: `${op.name} has been closed. Field devices can no longer sync to it.`,
-      linkPath: "/operation",
+      linkPath: "/dashboard/operations",
     });
     return tx.operation.findUniqueOrThrow({ where: { operationId: op.operationId } });
   });

@@ -11,6 +11,7 @@ const query = z.object({
   entityType: z.string().trim().max(40).optional(),
   entityId: z.string().trim().max(100).optional(),
   userId: uuid.optional(),
+  deviceId: uuid.optional(),
   organisationId: uuid.optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
@@ -34,6 +35,7 @@ export const GET = route(async (req) => {
     entityType: q.entityType,
     entityId: q.entityId,
     userId: q.userId,
+    deviceId: q.deviceId,
     organisationId: auth.role === "GROUP_COORDINATOR" ? auth.organisationId : q.organisationId,
     createdAt: q.from || q.to ? { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) } : undefined,
   };

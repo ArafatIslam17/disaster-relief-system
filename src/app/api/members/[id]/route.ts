@@ -75,7 +75,7 @@ export const PATCH = route<Params>(async (req, { params }) => {
       await prisma.$transaction(async (tx) => {
         await tx.user.update({ where: { userId: target.userId }, data: { status: "Active", role } });
         await writeAudit(tx, { ...base, action: "USER_APPROVED", oldValue: { status: target.status, role: target.role }, newValue: { status: "Active", role } });
-        await notifyUsers(tx, [target.userId], { type: "ACCOUNT_APPROVED", message: "Your account has been approved. You can now sign in.", linkPath: "/" });
+        await notifyUsers(tx, [target.userId], { type: "ACCOUNT_APPROVED", message: "Your account has been approved. You can now sign in.", linkPath: "/login" });
       });
       return ok({ userId: target.userId, status: "Active", role });
     }
@@ -97,7 +97,7 @@ export const PATCH = route<Params>(async (req, { params }) => {
       await prisma.$transaction(async (tx) => {
         await tx.user.update({ where: { userId: target.userId }, data: { role: body.role } });
         await writeAudit(tx, { ...base, action: "ROLE_ASSIGNED", oldValue: { role: target.role }, newValue: { role: body.role } });
-        await notifyUsers(tx, [target.userId], { type: "ROLE_CHANGED", message: `Your role was changed to ${body.role.replace(/_/g, " ").toLowerCase()}.`, linkPath: "/" });
+        await notifyUsers(tx, [target.userId], { type: "ROLE_CHANGED", message: `Your role was changed to ${body.role.replace(/_/g, " ").toLowerCase()}.`, linkPath: "/login" });
       });
       return ok({ userId: target.userId, role: body.role });
     }
@@ -121,7 +121,7 @@ export const PATCH = route<Params>(async (req, { params }) => {
       await prisma.$transaction(async (tx) => {
         await tx.device.update({ where: { deviceId: device.deviceId }, data: { status: "Revoked" } });
         await writeAudit(tx, { ...base, deviceId: device.deviceId, action: "DEVICE_REVOKED", entityType: "DEVICE", entityId: device.deviceId, oldValue: { status: "Active" }, newValue: { status: "Revoked" } });
-        await notifyUsers(tx, [target.userId], { type: "DEVICE_REVOKED", message: `Device "${device.deviceLabel}" was revoked and can no longer sync.`, linkPath: "/" });
+        await notifyUsers(tx, [target.userId], { type: "DEVICE_REVOKED", message: `Device "${device.deviceLabel}" was revoked and can no longer sync.`, linkPath: "/login" });
       });
       return ok({ deviceId: device.deviceId, status: "Revoked" });
     }

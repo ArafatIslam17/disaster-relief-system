@@ -182,7 +182,7 @@ async function requestMembership(auth: AuthContext, operationId: string, operati
     await notifyUsers(tx, await activeRoleIds(tx, "OPERATION_ADMINISTRATOR"), {
       type: "MEMBERSHIP_PENDING",
       message: `${org.name} requested to join ${operationName}.`,
-      linkPath: "/operation/memberships",
+      linkPath: "/dashboard/admin?tab=memberships",
     });
     return m;
   });
@@ -203,7 +203,7 @@ async function reviewMembership(auth: AuthContext, operationId: string, operatio
     await notifyUsers(tx, await activeCoordinatorIds(tx, [organisationId]), {
       type: decision === "approve" ? "MEMBERSHIP_APPROVED" : "MEMBERSHIP_REJECTED",
       message: `Your request to join ${operationName} was ${status.toLowerCase()}.`,
-      linkPath: "/operation",
+      linkPath: "/dashboard/operations",
     });
     return tx.operationMembership.findUniqueOrThrow({ where: key });
   });

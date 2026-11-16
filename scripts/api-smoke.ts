@@ -219,7 +219,7 @@ async function main() {
   check("server value kept for member_count; head_name merged; version 3", hh.memberCount === 8 && hh.headName === "Jahanara Begum Khan" && hh.version === 3, hh);
   const conflictId = res0?.conflicts?.[0]?.conflictId;
   const rafiqNotes = (await rafiq.get("/api/notifications?unread=true")).body;
-  check("coordinator notified of conflict", rafiqNotes.notifications.some((n: any) => n.type === "CONFLICT_OPEN" && n.linkPath === `/conflicts/${conflictId}`));
+  check("coordinator notified of conflict", rafiqNotes.notifications.some((n: any) => n.type === "CONFLICT_OPEN" && n.linkPath === `/dashboard/conflicts?id=${conflictId}`));
 
   // ---------------------------------------------------------------------------
   section("Conflict resolution (UC-17)");

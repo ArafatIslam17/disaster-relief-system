@@ -16,6 +16,7 @@ export type CoverageRow = {
   status: CoverageStatus;
   label: { en: string; bn: string };
   lastReleasedAt: string | null;
+  lastDistributionAt: string | null;
 };
 
 /**
@@ -23,7 +24,7 @@ export type CoverageRow = {
  * distribution. Areas with zero registered households report "No Records / কোনো তথ্য নেই".
  */
 export async function computeCoverage(operationId: string): Promise<CoverageRow[]> {
-  const [areas, served, anonymous, releases] = await Promise.all([
+  const [areas, served, anonymous, releases, lastDist] = await Promise.all([
     prisma.area.findMany({
       where: { operationId },
       orderBy: [{ upazila: "asc" }, { unionName: "asc" }, { ward: "asc" }],
@@ -40,7 +41,9 @@ export async function computeCoverage(operationId: string): Promise<CoverageRow[
       _count: { _all: true },
     }),
     prisma.unservedRelease.groupBy({ by: ["areaId"], where: { operationId }, _max: { releasedAt: true } }),
+    prisma.distribution.groupBy({ by: ["areaId"], where: { area: { operationId }, status: "Active" }, _max: { distributedAt: true } }),
   ]);
+  const lastDistBy = new Map(lastDist.map((d) => [d.areaId, d._max.distributedAt]));
   const servedBy = new Map(served.map((s) => [s.areaId, s._count._all]));
   const anonBy = new Map(anonymous.map((a) => [a.areaId, a._count._all]));
   const releasedBy = new Map(releases.map((r) => [r.areaId, r._max.releasedAt]));
@@ -61,6 +64,16 @@ export async function computeCoverage(operationId: string): Promise<CoverageRow[
       status,
       label: { en: STATUS_LABELS[status].en, bn: STATUS_LABELS[status].bn },
       lastReleasedAt: releasedBy.get(a.areaId)?.toISOString() ?? null,
+      lastDistributionAt: lastDistBy.get(a.areaId)?.toISOString() ?? null,
     };
   });
+}
+
+/** Most recent sync batch received from any field device for this operation's areas. */
+export async function lastFieldSyncAt(operationId: string): Promise<string | null> {
+  const row = await prisma.device.aggregate({
+    where: { user: { organisation: { memberships: { some: { operationId, status: "Approved" } } } } },
+    _max: { lastSyncAt: true },
+  });
+  return row._max.lastSyncAt?.toISOString() ?? null;
 }

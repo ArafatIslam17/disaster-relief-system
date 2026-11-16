@@ -76,7 +76,7 @@ export async function checkDistribution(tx: Tx, distributionId: string): Promise
     await notifyUsers(tx, recipients, {
       type: "DISTRIBUTION_FLAG",
       message: `${d.household?.shortCode ?? "A household"} received the same item from two organisations within ${env().REPEAT_DISTRIBUTION_WINDOW_HOURS} hours.`,
-      linkPath: `/flags/${flag.flagId}`,
+      linkPath: `/dashboard/duplicates?tab=flags&flag=${flag.flagId}`,
     });
   }
   return created;

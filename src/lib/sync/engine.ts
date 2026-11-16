@@ -303,14 +303,14 @@ async function householdUpdate(tx: Tx, ctx: SyncContext, ev: EventEnvelope, touc
     await notifyUsers(tx, coordinators, {
       type: "CONFLICT_OPEN",
       message: `Sync conflict on ${h.shortCode}: ${fieldName} was changed on the server and on a device.`,
-      linkPath: `/conflicts/${row.conflictId}`,
+      linkPath: `/dashboard/conflicts?id=${row.conflictId}`,
     });
   }
   if (conflicts.length > 0) {
     await notifyUsers(tx, [ctx.userId], {
       type: "CONFLICT_OPEN",
       message: `Your offline edit to ${h.shortCode} conflicts with a server change and is awaiting coordinator review.`,
-      linkPath: `/households/${h.shortCode}`,
+      linkPath: "/field/records",
     });
   }
   if (Object.keys(merge.applied).length > 0) markTouched(touched, h.area.unionName, h.householdId);

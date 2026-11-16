@@ -11,6 +11,8 @@ const query = z.object({
   operationId: uuid.optional(),
   areaId: uuid.optional(),
   q: z.string().trim().max(80).optional(),
+  /** "true": only households with no Active distribution (UC-21 unserved list). */
+  unserved: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -23,6 +25,7 @@ export const GET = route(async (req) => {
   const where: Prisma.HouseholdWhereInput = {
     area: { operationId: op.operationId },
     ...(qp.areaId ? { areaId: qp.areaId } : {}),
+    ...(qp.unserved === "true" ? { distributions: { none: { status: "Active" } } } : {}),
     ...(qp.q ? { OR: [{ shortCode: { contains: qp.q, mode: "insensitive" } }, { headName: { contains: qp.q, mode: "insensitive" } }] } : {}),
   };
   const [total, rows] = await Promise.all([

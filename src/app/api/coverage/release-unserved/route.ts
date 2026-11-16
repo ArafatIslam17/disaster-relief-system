@@ -51,7 +51,7 @@ export const POST = route(async (req) => {
     await notifyUsers(tx, volunteers.map((v) => v.userId), {
       type: "UNSERVED_LIST_RELEASED",
       message: `${unserved.length} unserved households in ${area.unionName}, Ward ${area.ward} are ready on your device after the next sync.`,
-      linkPath: "/field/unserved",
+      linkPath: "/field/distribute",
     });
     return r;
   });

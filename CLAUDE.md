@@ -17,11 +17,17 @@ npm run db:seed      # prisma db seed — TRUNCATES all tables, then seeds
 npm run db:reset     # drop, re-migrate, re-seed
 npm run test:api     # end-to-end API test against a running server (API_BASE, default :3000). RE-SEEDS THE DB.
 npm run test:field   # Playwright field-app test at 360×740 against a PRODUCTION server (npm run build && npm start). RE-SEEDS THE DB.
+npm run test:dashboard # Playwright dashboard + portal test at 1366×900 against a production server. RE-SEEDS THE DB.
 ```
+
+Prisma CLI config lives in `prisma.config.ts` (seed command, migrations path); it loads `.env` via `dotenv`.
+The three e2e suites share one database: run them one after another, never in parallel.
 
 `npm run test:api` must pass before every push that touches `src/app/api` or `src/lib`.
 `npm run test:field` must pass before every push that touches `src/app/field`, `src/components/field`,
-`src/lib/field`, `src/lib/offline-*`, `src/hooks` or `public/sw.js`. Use a production build: the service
+`src/lib/field`, `src/lib/offline-*`, `src/hooks` or `public/sw.js`.
+`npm run test:dashboard` must pass before every push that touches `src/app/dashboard`, `src/components/dashboard`,
+`src/components/public`, `src/app/(login|register)` or `src/app/page.tsx`. Use a production build: the service
 worker only registers in production. `playwright` is pinned to the preinstalled browser's version (1.63.0) —
 never upgrade it or run `playwright install`.
 
@@ -45,6 +51,8 @@ Local DB: copy `.env.example` → `.env`. Postgres 16 is expected at `DATABASE_U
 | GROUP_COORDINATOR (Cumilla Flood Response) | Shahidul Alam | 01611000040 | `Coordinator@2026` | PendingApproval |
 
 These passwords are for local/demo databases only. Never seed them into production.
+The `/login` "Capstone Demo Accounts" panel renders only when `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=true` at build
+time. Leave it unset on every real deployment.
 
 ---
 
@@ -256,9 +264,22 @@ outbox), `rejected[]` with `retryable`, `householdShortCodes`, `conflicts`, and 
 - All field network calls go through `fieldFetch()` so the Offline Mode Simulator blocks them.
 - `public/sw.js` caches the `/field` shell and its `/_next/static` assets; `/api/*` is never cached.
 
-### 5.9 Route map for UI pages (notification `link_path` values depend on these)
-`/conflicts/[id]`, `/duplicates/[id]`, `/flags/[id]`, `/households/[shortCode]`,
-`/operation`, `/operation/memberships`, `/admin/organisations`, `/admin/users`, `/field/unserved`.
+### 5.9 Portal & dashboard (`/`, `/login`, `/register`, `/register/organisation`, `/dashboard/*`)
+- `/` redirects signed-in users by role (`homeFor()` in `src/lib/auth/page-session.ts`): FIELD_VOLUNTEER → `/field`,
+  everyone else → `/dashboard/coverage`.
+- Dashboard pages are thin server components that call `requireSection()` (`src/lib/auth/page-guard.ts`) and render a
+  client view from `src/components/dashboard/`. Views fetch **only through the `/api` routes** (`api()` / `useApi()`),
+  so RBAC, org scoping and NFR06 masking are never re-implemented in the UI. Never query Prisma from a dashboard view.
+- Sidebar items and page guards both come from `canOpen()` in `src/lib/dashboard-nav.ts`, which mirrors `PERMISSIONS`.
+- The selected operation is the `dash_op` cookie (`useDash().operation`); pass `operationId` to every API call.
+- OBSERVER sees area-level figures only: no household names, phones, drawers or household endpoints.
+- Report PDF export is `window.print()`; anything that must not print gets `print:hidden`.
+
+### 5.10 Route map (notification `link_path` values must be one of these)
+`/dashboard/conflicts?id=`, `/dashboard/duplicates?pair=`, `/dashboard/duplicates?tab=flags&flag=`,
+`/dashboard/households?code=`, `/dashboard/operations`, `/dashboard/admin?tab=organisations|users|memberships`,
+`/field/records`, `/field/distribute`, `/login`. Legacy paths (`/conflicts/:id`, `/admin/users`, …) redirect in
+`next.config.ts`.
 
 ## 6. Code conventions
 - TypeScript strict; no `any`, no `@ts-ignore`. Validate every request body with `zod` at the boundary.

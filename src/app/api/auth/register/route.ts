@@ -40,7 +40,7 @@ export const POST = route(async (req) => {
     await notifyUsers(tx, await coordinatorsOrSysAdmins(tx, [org.organisationId]), {
       type: "USER_PENDING",
       message: `A new ${u.role === "GROUP_COORDINATOR" ? "coordinator" : "volunteer"} account for ${org.name} is awaiting approval.`,
-      linkPath: "/admin/users",
+      linkPath: "/dashboard/admin?tab=users",
     });
     return u;
   });

@@ -66,7 +66,7 @@ export const POST = route<Params>(async (req, { params }) => {
     await notifyUsers(tx, others, {
       type: "DUPLICATE_REVIEWED",
       message: `Duplicate pair ${pair.householdA.shortCode} / ${pair.householdB.shortCode} is now ${t.to}.`,
-      linkPath: `/duplicates/${pairId}`,
+      linkPath: `/dashboard/duplicates?pair=${pairId}`,
     });
     return { flagIds };
   });

@@ -63,7 +63,7 @@ export const PATCH = route<Params>(async (req, { params }) => {
     await notifyUsers(tx, pending.map((u) => u.userId), {
       type: body.decision === "approve" ? "ORGANISATION_APPROVED" : "ORGANISATION_REJECTED",
       message: body.decision === "approve" ? `${org.name} has been approved. You can now sign in.` : `${org.name} was not approved: ${body.decision === "reject" ? body.rejectionReason : ""}`,
-      linkPath: "/",
+      linkPath: "/login",
     });
     return { status, usersUpdated: pending.length };
   });

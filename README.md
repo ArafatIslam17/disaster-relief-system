@@ -14,6 +14,12 @@ npm run dev
 
 Demo accounts, design rules, architecture rules and the API map are in [`CLAUDE.md`](./CLAUDE.md).
 
+## Coordination dashboard
+
+Open `/` and sign in. Coordinators, operation administrators, system administrators and observers land on
+`/dashboard/coverage`; the sidebar only shows what the role may use. With `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=true`
+(demo builds only) the login page lists one-click demo accounts.
+
 ## Field app
 
 Open `/field` on a phone (or a 360 px wide browser window), sign in as a field volunteer
@@ -26,6 +32,7 @@ The top bar has an **Offline simulator** switch for demonstrating offline behavi
 npm run build && npm start     # in one terminal
 npm run test:api               # in another — re-seeds the database, then exercises every endpoint
 npm run test:field             # field app in a 360×740 browser, incl. real offline reloads
+npm run test:dashboard         # portal + dashboard for every role at 1366×900
 ```
 
 ## Seed contents
@@ -36,3 +43,10 @@ npm run test:field             # field app in a 360×740 browser, incl. real off
 - 25 households with version history, 18 distributions (1 anonymous, 1 voided)
 - 2 open same-field conflicts (+1 resolved), 2 duplicate pairs (0.88 Likely, 0.71 Possible),
   1 cross-organisation 24-hour distribution flag, notifications and an append-only audit trail
+
+## Deploying (Vercel)
+
+1. Provision PostgreSQL and set `DATABASE_URL` and `AUTH_JWT_SECRET` (≥ 32 random bytes) in the project's
+   environment variables. Do **not** set `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS` on a real deployment.
+2. Apply migrations once per release: `npx prisma migrate deploy` (the build does not migrate).
+3. Build command: `npm run build` (runs `prisma generate` first). Seed only demo databases (`npm run db:seed`).

@@ -57,7 +57,7 @@ export const POST = route(async (req) => {
         await notifyUsers(tx, await coordinatorsOrSysAdmins(tx, [u.organisationId]), {
           type: "ACCOUNT_LOCKED",
           message: `An account was locked after ${maxAttempts} failed sign-in attempts.`,
-          linkPath: "/admin/users",
+          linkPath: "/dashboard/admin?tab=users",
         });
         return lockedUntil;
       }

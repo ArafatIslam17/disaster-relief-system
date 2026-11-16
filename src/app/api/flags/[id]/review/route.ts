@@ -50,7 +50,7 @@ export const POST = route<Params>(async (req, { params }) => {
     await notifyUsers(tx, others, {
       type: "DISTRIBUTION_FLAG_REVIEWED",
       message: `Repeat-distribution flag on ${flag.firstDistribution.household?.shortCode ?? "a household"} was marked ${body.status}.`,
-      linkPath: `/flags/${flagId}`,
+      linkPath: `/dashboard/duplicates?tab=flags&flag=${flagId}`,
     });
   });
   return ok({ flagId, status: body.status });

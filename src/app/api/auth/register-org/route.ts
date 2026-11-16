@@ -44,7 +44,7 @@ export const POST = route(async (req) => {
     await notifyUsers(tx, await activeRoleIds(tx, "SYSTEM_ADMINISTRATOR"), {
       type: "ORGANISATION_PENDING",
       message: `New organisation registration: ${name}.`,
-      linkPath: "/admin/organisations",
+      linkPath: "/dashboard/admin?tab=organisations",
     });
     return { organisationId: org.organisationId, userId: user.userId };
   });

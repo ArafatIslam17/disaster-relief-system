@@ -88,7 +88,7 @@ export const POST = route<Params>(async (req, { params }) => {
     await notifyUsers(tx, [c.localUserId].filter((id) => id !== auth.userId), {
       type: "CONFLICT_RESOLVED",
       message: `The ${c.fieldName} conflict on ${current.shortCode} was resolved.`,
-      linkPath: `/households/${current.shortCode}`,
+      linkPath: "/field/records",
     });
     return { version, resolvedValue };
   });

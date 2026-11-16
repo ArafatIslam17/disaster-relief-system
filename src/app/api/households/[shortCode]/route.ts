@@ -26,7 +26,7 @@ export const GET = route<Params>(async (req, { params }) => {
   const auth = await requirePermission(req, "household.read");
   const h = await load(params.shortCode);
   const registrarOrg = h.registeredByUser.organisationId;
-  const [versions, distributions, openConflicts] = await Promise.all([
+  const [versions, distributions, openConflicts, conflicts, pairs, flags] = await Promise.all([
     prisma.householdVersion.findMany({
       where: { householdId: h.householdId },
       orderBy: { version: "asc" },
@@ -38,7 +38,21 @@ export const GET = route<Params>(async (req, { params }) => {
       include: { items: { include: { item: { select: { itemName: true, unit: true } } } }, recordedByUser: { select: { fullName: true, organisation: { select: { name: true } } } } },
     }),
     prisma.conflict.count({ where: { householdId: h.householdId, status: "Open" } }),
+    prisma.conflict.findMany({
+      where: { householdId: h.householdId },
+      orderBy: { clientTime: "asc" },
+      include: { localUser: { select: { fullName: true } }, resolvedByUser: { select: { fullName: true } }, event: { select: { receivedAt: true } } },
+    }),
+    prisma.duplicatePair.findMany({
+      where: { OR: [{ householdAId: h.householdId }, { householdBId: h.householdId }] },
+      include: { householdA: { select: { shortCode: true } }, householdB: { select: { shortCode: true } }, reviewedByUser: { select: { fullName: true } } },
+    }),
+    prisma.distributionFlag.findMany({
+      where: { OR: [{ firstDistribution: { householdId: h.householdId } }, { secondDistribution: { householdId: h.householdId } }] },
+      include: { reviewedByUser: { select: { fullName: true } } },
+    }),
   ]);
+  const maskConflictValue = (field: string, v: string | null) => (field === "mobile_number" ? visibleMobile(auth, registrarOrg, v).mobileNumber : v);
   return ok({
     household: { ...serializeHousehold(auth, h), area: h.area },
     openConflicts,
@@ -51,6 +65,31 @@ export const GET = route<Params>(async (req, { params }) => {
       changedBy: v.changedByUser.fullName,
       createdAt: v.createdAt,
     })),
+    /** Review decisions touching this household, for the append-only history timeline (UC-23). */
+    reviews: {
+      conflicts: conflicts.map((c) => ({
+        conflictId: c.conflictId,
+        fieldName: c.fieldName,
+        status: c.status,
+        localValue: maskConflictValue(c.fieldName, c.localValue),
+        serverValue: maskConflictValue(c.fieldName, c.serverValue),
+        resolvedValue: maskConflictValue(c.fieldName, c.resolvedValue),
+        raisedAt: c.event.receivedAt,
+        raisedBy: c.localUser.fullName,
+        resolvedAt: c.resolvedAt,
+        resolvedBy: c.resolvedByUser?.fullName ?? null,
+      })),
+      duplicatePairs: pairs.map((p) => ({
+        pairId: p.pairId,
+        otherShortCode: p.householdAId === h.householdId ? p.householdB.shortCode : p.householdA.shortCode,
+        score: p.score.toFixed(2),
+        label: p.label,
+        status: p.status,
+        reviewedAt: p.reviewedAt,
+        reviewedBy: p.reviewedByUser?.fullName ?? null,
+      })),
+      flags: flags.map((f) => ({ flagId: f.flagId, status: f.status, note: f.note, createdAt: f.createdAt, reviewedAt: f.reviewedAt, reviewedBy: f.reviewedByUser?.fullName ?? null })),
+    },
     distributions: distributions.map((d) => ({
       distributionId: d.distributionId,
       distributedAt: d.distributedAt,

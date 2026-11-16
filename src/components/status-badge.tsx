@@ -35,12 +35,14 @@ export const STATUS_TONE: Record<string, Tone> = {
 
 export type StatusKey = keyof typeof STATUS_TONE;
 
-export function StatusBadge({ status, locale }: { status: StatusKey; locale: Locale }) {
+/** `bilingual` renders "English / বাংলা" regardless of the UI locale (coverage status labels). */
+export function StatusBadge({ status, locale, bilingual = false }: { status: StatusKey; locale: Locale; bilingual?: boolean }) {
   const tone = STATUS_TONE[status];
   if (!tone) throw new Error(`StatusBadge: unmapped status "${status}". Add it to STATUS_TONE and STATUS_LABELS.`);
-  const label = STATUS_LABELS[status]?.[locale] ?? status;
+  const labels = STATUS_LABELS[status];
+  const label = bilingual && labels ? `${labels.en} / ${labels.bn}` : (labels?.[locale] ?? status);
   return (
-    <Badge tone={tone} className={locale === "bn" ? "font-bangla" : undefined}>
+    <Badge tone={tone} className={bilingual || locale === "bn" ? "font-bangla" : undefined}>
       {label}
     </Badge>
   );

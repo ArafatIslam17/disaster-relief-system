@@ -83,7 +83,7 @@ export async function scoreHouseholds(args: { operationId: string; unionName: st
         await notifyUsers(tx, coordinators, {
           type: "DUPLICATE_REVIEW",
           message: `${label} duplicate (${score.toFixed(2)}): ${a.shortCode} and ${b.shortCode} in ${a.area.unionName}.`,
-          linkPath: `/duplicates/${pair.pairId}`,
+          linkPath: `/dashboard/duplicates?pair=${pair.pairId}`,
         });
       });
     }
