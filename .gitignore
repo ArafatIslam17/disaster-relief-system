@@ -42,3 +42,4 @@ yarn-error.log*
 next-env.d.ts
 /field-e2e-screens/
 /dashboard-e2e-screens/
+/demo-videos/

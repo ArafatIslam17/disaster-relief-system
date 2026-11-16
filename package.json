@@ -15,7 +15,8 @@
     "postinstall": "prisma generate",
     "test:api": "tsx scripts/api-smoke.ts",
     "test:field": "tsx scripts/field-e2e.ts",
-    "test:dashboard": "tsx scripts/dashboard-e2e.ts"
+    "test:dashboard": "tsx scripts/dashboard-e2e.ts",
+    "demo:record": "tsx scripts/record-demo.spec.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

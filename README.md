@@ -44,6 +44,15 @@ npm run test:dashboard         # portal + dashboard for every role at 1366×900
 - 2 open same-field conflicts (+1 resolved), 2 duplicate pairs (0.88 Likely, 0.71 Possible),
   1 cross-organisation 24-hour distribution flag, notifications and an append-only audit trail
 
+## Recording demo videos
+
+```bash
+APP_URL=https://your-app.vercel.app npm run demo:record
+```
+
+Records one walkthrough clip per role into `demo-videos/` (see the header of `scripts/record-demo.spec.ts` for
+options). It signs in with the seeded demo accounts and changes data, so use a freshly seeded demo database only.
+
 ## Deploying (Vercel)
 
 1. Provision PostgreSQL and set `DATABASE_URL` and `AUTH_JWT_SECRET` (≥ 32 random bytes) in the project's
