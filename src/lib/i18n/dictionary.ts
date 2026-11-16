@@ -84,7 +84,7 @@ export const STATUS_LABELS: Record<string, Record<Locale, string>> = {
   Deactivated: { en: "Deactivated", bn: "নিষ্ক্রিয়" },
   NotDuplicate: { en: "Not duplicate", bn: "ডুপ্লিকেট নয়" },
   Unserved: { en: "Unserved", bn: "ত্রাণবঞ্চিত" },
-  NoRecords: { en: "No Records", bn: "কোনো রেকর্ড নেই" },
+  NoRecords: { en: "No Records", bn: "কোনো তথ্য নেই" },
 };
 
 /** Administrative place names used on coverage labels. Unknown names fall back to English. */

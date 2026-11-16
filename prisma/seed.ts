@@ -153,7 +153,7 @@ async function main() {
     { key: "volShobujOld", fullName: "Tahmina Akter", mobileNumber: "01711000012", role: "FIELD_VOLUNTEER", status: "Deactivated", organisationId: org.shobuj.organisationId, createdAt: bd("2026-10-21 09:10") },
     { key: "coordFyv", fullName: "Jannatul Ferdous", mobileNumber: "01811000021", role: "GROUP_COORDINATOR", status: "Active", organisationId: org.fyv.organisationId, createdAt: bd("2026-10-22 15:35") },
     { key: "volFyv", fullName: "Mahmudul Hasan", mobileNumber: "01811000020", role: "FIELD_VOLUNTEER", status: "Active", organisationId: org.fyv.organisationId, createdAt: bd("2026-10-23 10:00") },
-    { key: "volFyvLocked", fullName: "Kamrul Hasan", mobileNumber: "01811000022", role: "FIELD_VOLUNTEER", status: "Locked", organisationId: org.fyv.organisationId, createdAt: bd("2026-10-23 10:20"), failedAttempts: 5, lockedUntil: addMinutes(now, 30) },
+    { key: "volFyvLocked", fullName: "Kamrul Hasan", mobileNumber: "01811000022", role: "FIELD_VOLUNTEER", status: "Locked", organisationId: org.fyv.organisationId, createdAt: bd("2026-10-23 10:20"), failedAttempts: 5, lockedUntil: addMinutes(now, 15) },
     { key: "coordDelta", fullName: "Shirin Sultana", mobileNumber: "01911000031", role: "GROUP_COORDINATOR", status: "Active", organisationId: org.delta.organisationId, createdAt: bd("2026-10-25 11:20") },
     { key: "volDelta", fullName: "Arif Hossain", mobileNumber: "01911000030", role: "FIELD_VOLUNTEER", status: "Active", organisationId: org.delta.organisationId, createdAt: bd("2026-10-26 09:00") },
     { key: "pendingCumilla", fullName: "Shahidul Alam", mobileNumber: "01611000040", role: "GROUP_COORDINATOR", status: "PendingApproval", organisationId: org.cumilla.organisationId, createdAt: bd("2026-11-14 19:45") },
@@ -585,17 +585,17 @@ async function main() {
   // -------------------------------------------------------------------------
   await prisma.notification.createMany({
     data: [
-      { userId: u.coordShobuj, type: "CONFLICT_OPEN", message: "Sync conflict on FN-1006 (Mizanur Rahman): member_count — device 7, server 6.", linkPath: `/conflicts/${conflictIds.c1006}`, createdAt: bd("2026-11-09 18:02") },
+      { userId: u.coordShobuj, type: "CONFLICT_OPEN", message: "Sync conflict on FN-1006: member_count was changed on the server and on a device.", linkPath: `/conflicts/${conflictIds.c1006}`, createdAt: bd("2026-11-09 18:02") },
       { userId: u.coordShobuj, type: "CONFLICT_RESOLVED", message: "You resolved the head_name conflict on FN-1002.", linkPath: `/conflicts/${conflictIds.c1002}`, isRead: true, createdAt: bd("2026-11-08 09:05") },
       { userId: u.volShobuj, type: "CONFLICT_OPEN", message: "Your offline edit to FN-1006 conflicts with a server change and is awaiting coordinator review.", linkPath: `/households/FN-1006`, createdAt: bd("2026-11-09 18:02") },
-      { userId: u.coordFyv, type: "CONFLICT_OPEN", message: "Sync conflict on FN-1009 (Anwara Begum): mobile_number — device 01815667788, server 01911223344.", linkPath: `/conflicts/${conflictIds.c1009}`, createdAt: bd("2026-11-10 21:15") },
+      { userId: u.coordFyv, type: "CONFLICT_OPEN", message: "Sync conflict on FN-1009: mobile_number was changed on the server and on a device.", linkPath: `/conflicts/${conflictIds.c1009}`, createdAt: bd("2026-11-10 21:15") },
       { userId: u.opsadmin, type: "DUPLICATE_REVIEW", message: "Likely duplicate (0.88): FN-1001 and FN-1018 in Fazilpur, Ward 03.", linkPath: `/duplicates/${pairLikely}`, createdAt: bd("2026-11-06 17:55") },
       { userId: u.opsadmin, type: "DUPLICATE_REVIEW", message: "Possible duplicate (0.71): FN-1011 and FN-1023 in Mirzanagar, Ward 01.", linkPath: `/duplicates/${pairPossible}`, createdAt: bd("2026-11-07 18:30") },
       { userId: u.opsadmin, type: "DISTRIBUTION_FLAG", message: "FN-1004 received relief from Shobuj Bangla Relief and Feni Youth Volunteers within 24 hours.", linkPath: `/flags/${flagId}`, createdAt: flagAt },
       { userId: u.opsadmin, type: "MEMBERSHIP_PENDING", message: "Cumilla Flood Response requested to join this operation.", linkPath: "/operation/memberships", createdAt: bd("2026-11-14 19:50") },
       { userId: u.sysadmin, type: "ORGANISATION_PENDING", message: "New organisation registration: Cumilla Flood Response.", linkPath: "/admin/organisations", createdAt: bd("2026-11-14 19:40") },
-      { userId: u.sysadmin, type: "USER_PENDING", message: "Shahidul Alam (Cumilla Flood Response) is awaiting account approval.", linkPath: "/admin/users", createdAt: bd("2026-11-14 19:45") },
-      { userId: u.sysadmin, type: "ACCOUNT_LOCKED", message: "Kamrul Hasan's account was locked after 5 failed sign-in attempts.", linkPath: "/admin/users", createdAt: addMinutes(now, -1) },
+      { userId: u.sysadmin, type: "USER_PENDING", message: "A new coordinator account for Cumilla Flood Response is awaiting approval.", linkPath: "/admin/users", createdAt: bd("2026-11-14 19:45") },
+      { userId: u.sysadmin, type: "ACCOUNT_LOCKED", message: "An account was locked after 5 failed sign-in attempts.", linkPath: "/admin/users", createdAt: addMinutes(now, -1) },
     ],
   });
 

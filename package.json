@@ -12,7 +12,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:api": "tsx scripts/api-smoke.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

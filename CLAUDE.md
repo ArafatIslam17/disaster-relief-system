@@ -15,7 +15,10 @@ npm run build        # prisma generate + next build — must pass before every p
 npm run db:migrate   # prisma migrate dev (creates + applies a migration)
 npm run db:seed      # prisma db seed — TRUNCATES all tables, then seeds
 npm run db:reset     # drop, re-migrate, re-seed
+npm run test:api     # end-to-end API test against a running server (API_BASE, default :3000). RE-SEEDS THE DB.
 ```
+
+`npm run test:api` must pass before every push that touches `src/app/api` or `src/lib`.
 
 Local DB: copy `.env.example` → `.env`. Postgres 16 is expected at `DATABASE_URL`.
 
@@ -32,7 +35,7 @@ Local DB: copy `.env.example` → `.env`. Postgres 16 is expected at `DATABASE_U
 | FIELD_VOLUNTEER (Feni Youth Volunteers) | Mahmudul Hasan | 01811000020 | `Volunteer@2026` | Active |
 | GROUP_COORDINATOR (Delta Aid Foundation) | Shirin Sultana | 01911000031 | `Coordinator@2026` | Active |
 | FIELD_VOLUNTEER (Delta Aid Foundation) | Arif Hossain | 01911000030 | `Volunteer@2026` | Active |
-| FIELD_VOLUNTEER | Kamrul Hasan | 01811000022 | `Volunteer@2026` | Locked (30 min from seed time) |
+| FIELD_VOLUNTEER | Kamrul Hasan | 01811000022 | `Volunteer@2026` | Locked (15 min from seed time) |
 | FIELD_VOLUNTEER | Tahmina Akter | 01711000012 | `Volunteer@2026` | Deactivated (device Revoked) |
 | GROUP_COORDINATOR (Cumilla Flood Response) | Shahidul Alam | 01611000040 | `Coordinator@2026` | PendingApproval |
 
@@ -132,8 +135,14 @@ src/lib/i18n/               Dictionary + server locale reader
 ### 5.2 Data rules (enforced in DB — do not work around them)
 - Prisma models are camelCase but map to the exact ERD table/column names (`@@map`/`@map`). Never rename
   a mapped column without a migration and a spec reason.
+- Additive columns beyond the ERD, each required by a requirement: `user.must_change_password` (NFR03),
+  `household.updated_at` / `distribution.updated_at` (delta download), `operation.pii_purged_at` (NFR07),
+  and table `unserved_release` (UC-21). Do not add more without the same justification.
 - `audit_log` and `household_version` are **append-only**: DB triggers reject UPDATE/DELETE. Every
   state-changing operation writes an `AuditLog` row in the same transaction (`old_value`/`new_value` as JSON).
+  The only exception is `src/lib/purge.ts`, which sets `SET LOCAL app.pii_purge = 'on'` and may only
+  overwrite PII columns with redacted values. DELETE is never allowed. Never use that flag anywhere else.
+- Notification `message` text must never contain PII (names, phone numbers). Use short codes.
 - Every household change (field edit or conflict resolution) increments `household.version` and inserts a
   `HouseholdVersion` row with `change_source` `FIELD_EDIT` or `CONFLICT_RESOLUTION` — in one transaction.
 - `duplicate_pair` stores pairs in canonical order (`household_a_id < household_b_id`, CHECK constraint).
@@ -160,27 +169,75 @@ src/lib/i18n/               Dictionary + server locale reader
   attempt is audited.
 
 ### 5.4 Detection rules
-- Duplicate households: score in [0,1]; `≥ DUPLICATE_LIKELY_THRESHOLD` (0.85) → `Likely`,
-  `≥ DUPLICATE_POSSIBLE_THRESHOLD` (0.65) → `Possible`, lower → no pair. Pairs start `PendingReview`.
-- Repeat distribution flag: same household, two `Active` distributions recorded by users of **different
-  organisations** within `REPEAT_DISTRIBUTION_WINDOW_HOURS` (24h) → `DISTRIBUTION_FLAG` `PendingReview`.
+- Duplicate households (`src/lib/detection/`): compared within the same union of an operation. Score =
+  weighted name similarity (Jaro-Winkler + fuzzy token overlap, honorifics like Md/Mst ignored) 0.45,
+  mobile exact/last-6 match 0.25 (dropped and re-weighted when either is missing), same ward 0.15,
+  member-count proximity 0.15. `≥ DUPLICATE_LIKELY_THRESHOLD` (0.85) → `Likely`,
+  `≥ DUPLICATE_POSSIBLE_THRESHOLD` (0.65) → `Possible`, lower → no pair. Pairs start `PendingReview`;
+  reviewed pairs are never reopened by a rescan. `Linked` households count as one family for flags.
+- Repeat distribution flag: same household (or a Linked duplicate), two `Active` distributions sharing at
+  least one `item_id`, recorded by users of **different organisations** within
+  `REPEAT_DISTRIBUTION_WINDOW_HOURS` (24h) → `DISTRIBUTION_FLAG` `PendingReview`, created in the same
+  transaction as the distribution.
+- Void window (UC-15): only the recording volunteer, only within `VOID_WINDOW_HOURS` (24h) of
+  `distributed_at`, measured to the void event's `client_time`. Voided rows are kept with `cancel_reason`.
 
 ### 5.5 Auth & roles
 - Login by `mobile_number` + password. `bcryptjs` hashes (cost ≥ 10). Sessions are HS256 JWTs signed with
   `jose` using `AUTH_JWT_SECRET`, stored in an `httpOnly`, `secure`, `sameSite=lax` cookie.
-- After `AUTH_MAX_FAILED_ATTEMPTS` consecutive failures the user becomes `Locked` with
-  `locked_until = now + AUTH_LOCKOUT_MINUTES`. Only `Active` users can sign in.
+- After `AUTH_MAX_FAILED_ATTEMPTS` (5) consecutive failures the user becomes `Locked` with
+  `locked_until = now + AUTH_LOCKOUT_MINUTES` (15). An expired lock clears itself at the next sign-in.
+  Only `Active` users can sign in. A temporary password sets `must_change_password`; every API except
+  `/api/auth/me`, `/api/auth/change-password` and `/api/auth/logout` returns `PASSWORD_CHANGE_REQUIRED` until it is changed.
+- `authenticate()` re-reads user status and device status from the DB on every request, so deactivation,
+  locking and device revocation take effect on existing sessions immediately.
+- Permissions live in `src/lib/auth/rbac.ts` (`PERMISSIONS`). Handlers call `requirePermission(req, "...")`
+  and then `assertOrgScope` for coordinator-scoped records. Never check roles ad hoc in handlers.
+- NFR06: households only leave the API through `serializeHousehold()`, which masks `mobile_number`
+  (`017XX-XXX892`) unless the caller's organisation registered the household.
 - Authorisation is checked on the server for every action (never only by hiding UI). Roles:
   `FIELD_VOLUNTEER`, `GROUP_COORDINATOR`, `OPERATION_ADMINISTRATOR`, `SYSTEM_ADMINISTRATOR`, `OBSERVER`
   (read-only, aggregate views only — never household PII).
 - Coordinators act only on records belonging to their own organisation.
 
-### 5.6 Route map (notification `link_path` values in the seed depend on these)
+### 5.6 API map (all handlers wrapped in `route()` from `src/lib/api.ts`)
+Errors are always `{ "error": { "code", "message", "details" } }`. Mutating requests with a foreign
+`Origin` header are rejected (CSRF), on top of `SameSite=Lax` cookies.
+
+| Endpoint | Who | Purpose |
+|---|---|---|
+| `POST /api/auth/register`, `register-org`, `login`, `logout`; `GET /api/auth/organisations` | public | UC-01..03 |
+| `GET /api/auth/me`, `POST /api/auth/change-password` | any signed-in | session, NFR03 |
+| `POST /api/auth/reset-temp-password` | GC (own org, field roles), SA | NFR03 temp password + unlock |
+| `POST /api/sync` | FV, GC | outbox upload + delta download (see `src/lib/sync/`) |
+| `GET/POST /api/operations`, `GET/PATCH /api/operations/[id]` | read: all; write: OA | create / close |
+| `GET/POST /api/operations/[id]/setup` | OA (GC: `requestMembership`) | areas, CSV import, items, memberships |
+| `POST /api/operations/pii-purge` | SA | NFR07 (dry run by default) |
+| `GET /api/organisations`, `PATCH /api/organisations/[id]` | SA | approve / reject |
+| `GET/POST /api/members`, `GET/PATCH /api/members/[id]` | GC (own org), SA | approve, reject, role, deactivate, revoke device |
+| `GET /api/households`, `GET/PATCH /api/households/[shortCode]` | FV/GC/OA read; GC edit | search, history, online edit |
+| `GET /api/conflicts`, `POST /api/conflicts/[id]/resolve` | GC (own org), OA | UC-17 |
+| `GET /api/duplicates`, `POST /api/duplicates/[id]`, `POST /api/duplicates/scan` | GC, OA | State Diagram 06 |
+| `GET /api/flags`, `POST /api/flags/[id]/review` | GC, OA | FR20 |
+| `GET /api/coverage`, `POST /api/coverage/release-unserved` | all / GC, OA | UC-20, UC-21 |
+| `GET/PATCH /api/notifications` | own | list, mark read |
+| `GET /api/audit` | GC (own org), OA, SA | filters + `format=csv`; no write routes exist |
+| `GET /api/reports?type=organisation\|summary&format=json\|csv\|html` | GC / OA, OB | summary is anonymised |
+
+### 5.7 Sync contract (`POST /api/sync`)
+Request `{ operationId, deviceId, since?, areaIds[], events[] }`, max 200 events. Each event
+`{ eventId, entityType, entityId, action, payload, baseVersion, clientTime }`. Supported: HOUSEHOLD CREATE/UPDATE,
+DISTRIBUTION CREATE/VOID. Response: `acknowledgedIds` (applied + already-seen; delete these from the
+outbox), `rejected[]` with `retryable`, `householdShortCodes`, `conflicts`, and `delta` (store
+`delta.nextSince` as the next `since`). Each event commits in its own transaction.
+
+### 5.8 Route map for UI pages (notification `link_path` values depend on these)
 `/conflicts/[id]`, `/duplicates/[id]`, `/flags/[id]`, `/households/[shortCode]`,
-`/operation/memberships`, `/admin/organisations`, `/admin/users`.
+`/operation`, `/operation/memberships`, `/admin/organisations`, `/admin/users`, `/field/unserved`.
 
 ## 6. Code conventions
 - TypeScript strict; no `any`, no `@ts-ignore`. Validate every request body with `zod` at the boundary.
+  Sole exception: `scripts/api-smoke.ts` may use `any` for untyped HTTP response JSON.
 - Server components by default; `"use client"` only for interactivity, Dexie and the locale toggle.
 - Prisma writes that touch more than one table go through `prisma.$transaction`.
 - CSV import/export uses `papaparse`; exports never include `password_hash` or device secrets.

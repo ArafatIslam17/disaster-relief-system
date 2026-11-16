@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { computeCoverage } from "@/lib/coverage";
 import { getLocale } from "@/lib/i18n/server";
 import { placeName, translator } from "@/lib/i18n/dictionary";
 import { LocaleToggle } from "@/components/locale-toggle";
@@ -7,54 +8,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export const dynamic = "force-dynamic";
 
-type CoverageRow = {
-  areaId: string;
-  upazila: string;
-  unionName: string;
-  ward: string;
-  registered: number;
-  served: number;
-  anonymous: number;
-};
-
-async function loadCoverage(operationId: string): Promise<CoverageRow[]> {
-  const areas = await prisma.area.findMany({
-    where: { operationId },
-    orderBy: [{ upazila: "asc" }, { unionName: "asc" }, { ward: "asc" }],
-    select: {
-      areaId: true,
-      upazila: true,
-      unionName: true,
-      ward: true,
-      _count: { select: { households: true } },
-    },
-  });
-
-  // Served = household with at least one Active (non-voided) distribution.
-  const served = await prisma.household.groupBy({
-    by: ["areaId"],
-    where: { area: { operationId }, distributions: { some: { status: "Active" } } },
-    _count: { _all: true },
-  });
-  const anonymous = await prisma.distribution.groupBy({
-    by: ["areaId"],
-    where: { area: { operationId }, isAnonymous: true, status: "Active" },
-    _count: { _all: true },
-  });
-  const servedBy = new Map(served.map((s) => [s.areaId, s._count._all]));
-  const anonBy = new Map(anonymous.map((a) => [a.areaId, a._count._all]));
-
-  return areas.map((a) => ({
-    areaId: a.areaId,
-    upazila: a.upazila,
-    unionName: a.unionName,
-    ward: a.ward,
-    registered: a._count.households,
-    served: servedBy.get(a.areaId) ?? 0,
-    anonymous: anonBy.get(a.areaId) ?? 0,
-  }));
-}
-
 export default async function CoveragePage() {
   const locale = await getLocale();
   const t = translator(locale);
@@ -62,7 +15,7 @@ export default async function CoveragePage() {
     where: { status: "Active" },
     orderBy: { startDate: "desc" },
   });
-  const rows = operation ? await loadCoverage(operation.operationId) : [];
+  const rows = operation ? await computeCoverage(operation.operationId) : [];
   const dateFmt = new Intl.DateTimeFormat(locale === "bn" ? "bn-BD-u-nu-latn" : "en-GB", { dateStyle: "medium", timeZone: "Asia/Dhaka" });
 
   return (
@@ -120,29 +73,20 @@ export default async function CoveragePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => {
-                  const unserved = r.registered - r.served;
-                  return (
+                {rows.map((r) => (
                     <TableRow key={r.areaId}>
                       <TableCell className={locale === "bn" ? "font-bangla" : undefined}>{placeName(r.upazila, locale)}</TableCell>
                       <TableCell className={locale === "bn" ? "font-bangla" : undefined}>{placeName(r.unionName, locale)}</TableCell>
                       <TableCell className="num">{r.ward}</TableCell>
                       <TableCell className="num text-right">{r.registered}</TableCell>
                       <TableCell className="num text-right">{r.served}</TableCell>
-                      <TableCell className="num text-right">{unserved}</TableCell>
-                      <TableCell className="num text-right">{r.anonymous}</TableCell>
+                      <TableCell className="num text-right">{r.unserved}</TableCell>
+                      <TableCell className="num text-right">{r.anonymousDistributions}</TableCell>
                       <TableCell>
-                        {r.registered === 0 ? (
-                          <StatusBadge status="NoRecords" locale={locale} />
-                        ) : unserved > 0 ? (
-                          <StatusBadge status="Unserved" locale={locale} />
-                        ) : (
-                          <StatusBadge status="Served" locale={locale} />
-                        )}
+                        <StatusBadge status={r.status} locale={locale} />
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                ))}
               </TableBody>
             </Table>
           </section>

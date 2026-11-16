@@ -12,7 +12,14 @@ npm run db:seed               # demo operation: Feni & Noakhali Flash Flood Resp
 npm run dev
 ```
 
-Demo accounts, design rules and architecture rules are in [`CLAUDE.md`](./CLAUDE.md).
+Demo accounts, design rules, architecture rules and the API map are in [`CLAUDE.md`](./CLAUDE.md).
+
+## Testing the API
+
+```bash
+npm run build && npm start     # in one terminal
+npm run test:api               # in another — re-seeds the database, then exercises every endpoint
+```
 
 ## Seed contents
 

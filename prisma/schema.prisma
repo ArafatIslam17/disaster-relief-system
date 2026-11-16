@@ -128,16 +128,18 @@ model Organisation {
 }
 
 model User {
-  userId         String     @id @default(uuid()) @map("user_id") @db.Uuid
-  organisationId String?    @map("organisation_id") @db.Uuid
-  fullName       String     @map("full_name")
-  mobileNumber   String     @unique @map("mobile_number")
-  passwordHash   String     @map("password_hash")
-  role           UserRole
-  status         UserStatus @default(PendingApproval)
-  failedAttempts Int        @default(0) @map("failed_attempts")
-  lockedUntil    DateTime?  @map("locked_until") @db.Timestamptz(3)
-  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  userId             String     @id @default(uuid()) @map("user_id") @db.Uuid
+  organisationId     String?    @map("organisation_id") @db.Uuid
+  fullName           String     @map("full_name")
+  mobileNumber       String     @unique @map("mobile_number")
+  passwordHash       String     @map("password_hash")
+  role               UserRole
+  status             UserStatus @default(PendingApproval)
+  failedAttempts     Int        @default(0) @map("failed_attempts")
+  lockedUntil        DateTime?  @map("locked_until") @db.Timestamptz(3)
+  /// Set when a temporary password is issued (NFR03); every API except change-password is refused until cleared.
+  mustChangePassword Boolean    @default(false) @map("must_change_password")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
 
   organisation Organisation? @relation(fields: [organisationId], references: [organisationId], onDelete: SetNull)
 
@@ -150,6 +152,7 @@ model User {
   duplicatePairsReviewed DuplicatePair[]    @relation("DuplicatePairReviewedBy")
   flagsReviewed          DistributionFlag[] @relation("DistributionFlagReviewedBy")
   notifications          Notification[]
+  unservedReleases       UnservedRelease[]
   auditLogs              AuditLog[]
 
   @@index([organisationId])
@@ -186,10 +189,13 @@ model Operation {
   endDate      DateTime?       @map("end_date") @db.Date
   status       OperationStatus @default(Active)
   closedAt     DateTime?       @map("closed_at") @db.Timestamptz(3)
+  /// Set when the 90-day closed-operation PII purge (NFR07) has run.
+  piiPurgedAt  DateTime?       @map("pii_purged_at") @db.Timestamptz(3)
 
-  memberships OperationMembership[]
-  areas       Area[]
-  reliefItems ReliefItem[]
+  memberships      OperationMembership[]
+  areas            Area[]
+  reliefItems      ReliefItem[]
+  unservedReleases UnservedRelease[]
 
   @@index([status])
   @@map("operation")
@@ -217,9 +223,10 @@ model Area {
   unionName   String @map("union_name")
   ward        String
 
-  operation     Operation      @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
-  households    Household[]
-  distributions Distribution[]
+  operation        Operation         @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+  households       Household[]
+  distributions    Distribution[]
+  unservedReleases UnservedRelease[]
 
   @@unique([operationId, upazila, unionName, ward])
   @@map("area")
@@ -257,6 +264,8 @@ model Household {
   gpsLocation  String?  @map("gps_location")
   version      Int      @default(1)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Drives delta download in /api/sync.
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   area             Area               @relation(fields: [areaId], references: [areaId], onDelete: Restrict)
   registeredByUser User               @relation("HouseholdRegisteredBy", fields: [registeredBy], references: [userId], onDelete: Restrict)
@@ -269,6 +278,7 @@ model Household {
   @@index([areaId])
   @@index([mobileNumber])
   @@index([registeredBy])
+  @@index([areaId, updatedAt])
   @@map("household")
 }
 
@@ -304,6 +314,8 @@ model Distribution {
   status         DistributionStatus @default(Active)
   cancelReason   String?            @map("cancel_reason")
   version        Int                @default(1)
+  /// Drives delta download in /api/sync.
+  updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   household      Household?         @relation(fields: [householdId], references: [householdId], onDelete: Restrict)
   area           Area               @relation(fields: [areaId], references: [areaId], onDelete: Restrict)
@@ -313,6 +325,7 @@ model Distribution {
   flagsAsSecond  DistributionFlag[] @relation("FlagSecondDistribution")
 
   @@index([householdId, distributedAt])
+  @@index([areaId, updatedAt])
   @@index([areaId, distributedAt])
   @@index([recordedBy])
   @@map("distribution")
@@ -418,6 +431,23 @@ model DistributionFlag {
   @@unique([firstDistributionId, secondDistributionId])
   @@index([status])
   @@map("distribution_flag")
+}
+
+/// UC-21: snapshot of unserved households in an area pushed to field devices.
+model UnservedRelease {
+  releaseId    String   @id @default(uuid()) @map("release_id") @db.Uuid
+  operationId  String   @map("operation_id") @db.Uuid
+  areaId       String   @map("area_id") @db.Uuid
+  releasedBy   String   @map("released_by") @db.Uuid
+  householdIds String[] @map("household_ids") @db.Uuid
+  releasedAt   DateTime @default(now()) @map("released_at") @db.Timestamptz(3)
+
+  operation      Operation @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+  area           Area      @relation(fields: [areaId], references: [areaId], onDelete: Restrict)
+  releasedByUser User      @relation(fields: [releasedBy], references: [userId], onDelete: Restrict)
+
+  @@index([areaId, releasedAt])
+  @@map("unserved_release")
 }
 
 // ---------------------------------------------------------------------------
