@@ -13,7 +13,8 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
     "postinstall": "prisma generate",
-    "test:api": "tsx scripts/api-smoke.ts"
+    "test:api": "tsx scripts/api-smoke.ts",
+    "test:field": "tsx scripts/field-e2e.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -48,6 +49,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
+    "playwright": "1.63.0",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",

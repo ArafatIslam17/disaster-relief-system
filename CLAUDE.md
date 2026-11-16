@@ -16,9 +16,14 @@ npm run db:migrate   # prisma migrate dev (creates + applies a migration)
 npm run db:seed      # prisma db seed — TRUNCATES all tables, then seeds
 npm run db:reset     # drop, re-migrate, re-seed
 npm run test:api     # end-to-end API test against a running server (API_BASE, default :3000). RE-SEEDS THE DB.
+npm run test:field   # Playwright field-app test at 360×740 against a PRODUCTION server (npm run build && npm start). RE-SEEDS THE DB.
 ```
 
 `npm run test:api` must pass before every push that touches `src/app/api` or `src/lib`.
+`npm run test:field` must pass before every push that touches `src/app/field`, `src/components/field`,
+`src/lib/field`, `src/lib/offline-*`, `src/hooks` or `public/sw.js`. Use a production build: the service
+worker only registers in production. `playwright` is pinned to the preinstalled browser's version (1.63.0) —
+never upgrade it or run `playwright install`.
 
 Local DB: copy `.env.example` → `.env`. Postgres 16 is expected at `DATABASE_URL`.
 
@@ -231,7 +236,27 @@ DISTRIBUTION CREATE/VOID. Response: `acknowledgedIds` (applied + already-seen; d
 outbox), `rejected[]` with `retryable`, `householdShortCodes`, `conflicts`, and `delta` (store
 `delta.nextSince` as the next `since`). Each event commits in its own transaction.
 
-### 5.8 Route map for UI pages (notification `link_path` values depend on these)
+### 5.8 Field app (`/field`, FIELD_VOLUNTEER + GROUP_COORDINATOR)
+- Target 360–412 px Android screens. Touch targets ≥ 52 px on field screens; primary actions at the bottom.
+- Every `/field/*` page renders `src/components/field/field-screen.tsx`; screens switch on the pathname via
+  `history.pushState` (`navigate()` in `useField()`). Never use `<Link>`/`router.push` inside `/field`: a server
+  round-trip fails offline and a hard navigation drops the in-memory vault key.
+- Storage (`src/lib/offline-db.ts`, Dexie `relief-field`): household PII (`head_name`, `mobile_number`,
+  `gps_location`) and every outbox payload are AES-GCM encrypted (`src/lib/offline-crypto.ts`). The data key
+  lives in memory only while unlocked and is wrapped twice: by a PBKDF2 key from the 4-digit PIN (offline
+  unlock, 7-day expiry, 5 attempts) and by one from the account password (recovery after lockout/expiry).
+  Never store PII in plaintext tables, `meta`, `localStorage` or the HTTP cache.
+- Short codes: offline registrations show a device-unique `TMP-####` on the slip; it is replaced by the
+  server's `FN-####` from `householdShortCodes` on sync acknowledgement (server stays the only FN issuer).
+- Sync (`src/lib/field/sync.ts`, `src/hooks/useSyncEngine.ts`): batches of 10, single-flight, per-event
+  states Pending → Uploading → Acknowledged | Failed (retryable, exponential backoff) | Rejected
+  (non-retryable, discard only via confirmation). Network loss mid-batch returns the batch to Pending.
+  Offline edits are coalesced into the not-yet-uploaded CREATE/UPDATE of the same household.
+  `applyDelta` never overwrites records that still have unacknowledged outbox events.
+- All field network calls go through `fieldFetch()` so the Offline Mode Simulator blocks them.
+- `public/sw.js` caches the `/field` shell and its `/_next/static` assets; `/api/*` is never cached.
+
+### 5.9 Route map for UI pages (notification `link_path` values depend on these)
 `/conflicts/[id]`, `/duplicates/[id]`, `/flags/[id]`, `/households/[shortCode]`,
 `/operation`, `/operation/memberships`, `/admin/organisations`, `/admin/users`, `/field/unserved`.
 

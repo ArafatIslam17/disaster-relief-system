@@ -14,11 +14,18 @@ npm run dev
 
 Demo accounts, design rules, architecture rules and the API map are in [`CLAUDE.md`](./CLAUDE.md).
 
+## Field app
+
+Open `/field` on a phone (or a 360 px wide browser window), sign in as a field volunteer
+(e.g. `01711000011` / `Volunteer@2026`), set a PIN, download wards under **Sync**, and work offline.
+The top bar has an **Offline simulator** switch for demonstrating offline behaviour.
+
 ## Testing the API
 
 ```bash
 npm run build && npm start     # in one terminal
 npm run test:api               # in another — re-seeds the database, then exercises every endpoint
+npm run test:field             # field app in a 360×740 browser, incl. real offline reloads
 ```
 
 ## Seed contents
