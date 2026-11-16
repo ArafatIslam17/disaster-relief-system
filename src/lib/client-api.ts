@@ -26,7 +26,13 @@ export async function api<T>(url: string, init: { method?: string; body?: unknow
   const data = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: unknown } } | null;
   if (!res.ok) {
     const details = data?.error?.details;
-    const fieldMessages = Array.isArray(details) ? details.map((d: { message?: string }) => d.message).filter(Boolean).join(" ") : "";
+    // Name the offending field so validation errors are diagnosable ("password: Invalid input: …").
+    const fieldMessages = Array.isArray(details)
+      ? details
+          .filter((d: { message?: string }) => d.message)
+          .map((d: { path?: string; message?: string }) => (d.path ? `${d.path}: ${d.message}` : d.message))
+          .join(" ")
+      : "";
     throw new ClientApiError(res.status, data?.error?.code ?? `HTTP_${res.status}`, fieldMessages || data?.error?.message || res.statusText, details);
   }
   return data as T;

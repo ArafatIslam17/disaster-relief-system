@@ -13,9 +13,9 @@ import { mobileNumber, uuid } from "@/lib/validation";
 const schema = z.object({
   mobileNumber,
   password: z.string().min(1).max(128),
-  /** Client-generated device UUID persisted in IndexedDB. Required for offline sync. */
-  deviceId: uuid.optional(),
-  deviceLabel: z.string().trim().min(1).max(100).optional(),
+  /** Client-generated device UUID persisted in IndexedDB. Required for offline sync; web sign-ins omit it (or send null). */
+  deviceId: uuid.nullish(),
+  deviceLabel: z.string().trim().min(1).max(100).nullish(),
 });
 
 const INVALID = () => new ApiError("UNAUTHENTICATED", "Mobile number or password is incorrect.");

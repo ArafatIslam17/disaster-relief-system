@@ -74,6 +74,11 @@ async function main() {
   const anon = new Client("anon");
   let r = await anon.login("01711000011", "wrong-password-1");
   check("wrong password → 401 generic", r.status === 401 && r.body.error.code === "UNAUTHENTICATED", r.body);
+  r = await anon.post("/api/auth/login", { mobileNumber: "01700000005", password: "Observer@2026", deviceId: null, deviceLabel: null, clientType: "web" });
+  check("web login tolerates null device fields and unknown extra keys", r.status === 200, r.body);
+  r = await anon.post("/api/auth/login", { mobileNumber: "01700000005" });
+  check("missing password → 422 naming the field", r.status === 422 && r.body.error.details[0].path === "password", r.body);
+  await anon.post("/api/auth/logout", {});
   r = await anon.login("01799999999", "whatever123");
   check("unknown mobile → same 401", r.status === 401 && r.body.error.message === "Mobile number or password is incorrect.");
 
