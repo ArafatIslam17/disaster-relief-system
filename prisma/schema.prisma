@@ -1,0 +1,463 @@
+// Offline-First Disaster Relief Distribution & Coordination System
+// Mirrors ERD (Fig 5.15) and Class Diagram (Fig 5.16) of the capstone specification.
+//
+// Conventions:
+//   - Prisma model/field names are PascalCase/camelCase for TypeScript ergonomics.
+//   - Physical table and column names are mapped (@@map / @map) to the exact ERD names.
+//   - Status enums map 1:1 to State Diagrams 01-06. Enum values are stored verbatim.
+//   - AUDIT_LOG and HOUSEHOLD_VERSION are append-only; the migration installs
+//     triggers that reject UPDATE and DELETE on both tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  FIELD_VOLUNTEER
+  GROUP_COORDINATOR
+  OPERATION_ADMINISTRATOR
+  SYSTEM_ADMINISTRATOR
+  OBSERVER
+}
+
+/// State Diagram 01 — Organisation registration lifecycle
+enum OrganisationStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+/// State Diagram 02 — User account lifecycle
+enum UserStatus {
+  PendingApproval
+  Active
+  Locked
+  Deactivated
+}
+
+enum DeviceStatus {
+  Active
+  Revoked
+}
+
+/// State Diagram 03 — Operation lifecycle
+enum OperationStatus {
+  Active
+  Closed
+}
+
+enum MembershipStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum HouseholdChangeSource {
+  FIELD_EDIT
+  CONFLICT_RESOLUTION
+}
+
+/// State Diagram 04 — Distribution lifecycle
+enum DistributionStatus {
+  Active
+  Voided
+}
+
+enum SyncEntityType {
+  HOUSEHOLD
+  DISTRIBUTION
+}
+
+enum SyncAction {
+  CREATE
+  UPDATE
+  VOID
+}
+
+/// State Diagram 05 — Conflict lifecycle
+enum ConflictStatus {
+  Open
+  Resolved
+}
+
+enum DuplicateLabel {
+  Likely
+  Possible
+}
+
+/// State Diagram 06 — Duplicate pair review lifecycle
+enum DuplicatePairStatus {
+  PendingReview
+  Linked
+  NotDuplicate
+}
+
+enum DistributionFlagStatus {
+  PendingReview
+  Justified
+  Repeat
+}
+
+// ---------------------------------------------------------------------------
+// Organisations, users, devices
+// ---------------------------------------------------------------------------
+
+model Organisation {
+  organisationId  String             @id @default(uuid()) @map("organisation_id") @db.Uuid
+  name            String             @unique
+  orgType         String             @map("org_type")
+  status          OrganisationStatus @default(Pending)
+  rejectionReason String?            @map("rejection_reason")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  users       User[]
+  memberships OperationMembership[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+  @@map("organisation")
+}
+
+model User {
+  userId         String     @id @default(uuid()) @map("user_id") @db.Uuid
+  organisationId String?    @map("organisation_id") @db.Uuid
+  fullName       String     @map("full_name")
+  mobileNumber   String     @unique @map("mobile_number")
+  passwordHash   String     @map("password_hash")
+  role           UserRole
+  status         UserStatus @default(PendingApproval)
+  failedAttempts Int        @default(0) @map("failed_attempts")
+  lockedUntil    DateTime?  @map("locked_until") @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [organisationId], onDelete: SetNull)
+
+  devices                Device[]
+  householdsRegistered   Household[]        @relation("HouseholdRegisteredBy")
+  householdVersions      HouseholdVersion[] @relation("HouseholdVersionChangedBy")
+  distributionsRecorded  Distribution[]     @relation("DistributionRecordedBy")
+  conflictsRaised        Conflict[]         @relation("ConflictLocalUser")
+  conflictsResolved      Conflict[]         @relation("ConflictResolvedBy")
+  duplicatePairsReviewed DuplicatePair[]    @relation("DuplicatePairReviewedBy")
+  flagsReviewed          DistributionFlag[] @relation("DistributionFlagReviewedBy")
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+
+  @@index([organisationId])
+  @@index([role, status])
+  @@map("user")
+}
+
+model Device {
+  deviceId     String       @id @default(uuid()) @map("device_id") @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  deviceLabel  String       @map("device_label")
+  status       DeviceStatus @default(Active)
+  registeredAt DateTime     @default(now()) @map("registered_at") @db.Timestamptz(3)
+  lastSyncAt   DateTime?    @map("last_sync_at") @db.Timestamptz(3)
+
+  user       User        @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  syncEvents SyncEvent[]
+  conflicts  Conflict[]
+  auditLogs  AuditLog[]
+
+  @@index([userId])
+  @@map("device")
+}
+
+// ---------------------------------------------------------------------------
+// Operations, areas, relief items
+// ---------------------------------------------------------------------------
+
+model Operation {
+  operationId  String          @id @default(uuid()) @map("operation_id") @db.Uuid
+  name         String
+  disasterType String          @map("disaster_type")
+  startDate    DateTime        @map("start_date") @db.Date
+  endDate      DateTime?       @map("end_date") @db.Date
+  status       OperationStatus @default(Active)
+  closedAt     DateTime?       @map("closed_at") @db.Timestamptz(3)
+
+  memberships OperationMembership[]
+  areas       Area[]
+  reliefItems ReliefItem[]
+
+  @@index([status])
+  @@map("operation")
+}
+
+model OperationMembership {
+  operationId    String           @map("operation_id") @db.Uuid
+  organisationId String           @map("organisation_id") @db.Uuid
+  status         MembershipStatus @default(Pending)
+  requestedAt    DateTime         @default(now()) @map("requested_at") @db.Timestamptz(3)
+  reviewedAt     DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+
+  operation    Operation    @relation(fields: [operationId], references: [operationId], onDelete: Cascade)
+  organisation Organisation @relation(fields: [organisationId], references: [organisationId], onDelete: Cascade)
+
+  @@id([operationId, organisationId])
+  @@index([organisationId])
+  @@map("operation_membership")
+}
+
+model Area {
+  areaId      String @id @default(uuid()) @map("area_id") @db.Uuid
+  operationId String @map("operation_id") @db.Uuid
+  upazila     String
+  unionName   String @map("union_name")
+  ward        String
+
+  operation     Operation      @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+  households    Household[]
+  distributions Distribution[]
+
+  @@unique([operationId, upazila, unionName, ward])
+  @@map("area")
+}
+
+model ReliefItem {
+  itemId      String @id @default(uuid()) @map("item_id") @db.Uuid
+  operationId String @map("operation_id") @db.Uuid
+  itemName    String @map("item_name")
+  unit        String
+
+  operation         Operation          @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+  distributionItems DistributionItem[]
+
+  @@unique([operationId, itemName])
+  @@map("relief_item")
+}
+
+// ---------------------------------------------------------------------------
+// Households and append-only version history (UC-15, UC-17)
+// ---------------------------------------------------------------------------
+
+model Household {
+  householdId  String   @id @default(uuid()) @map("household_id") @db.Uuid
+  shortCode    String   @unique @map("short_code")
+  areaId       String   @map("area_id") @db.Uuid
+  registeredBy String   @map("registered_by") @db.Uuid
+  /// English letters only (validated at the API boundary)
+  headName     String   @map("head_name")
+  mobileNumber String?  @map("mobile_number")
+  memberCount  Int      @map("member_count")
+  consentGiven Boolean  @map("consent_given")
+  consentAt    DateTime @map("consent_at") @db.Timestamptz(3)
+  /// "lat,lng" in WGS84 decimal degrees
+  gpsLocation  String?  @map("gps_location")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  area             Area               @relation(fields: [areaId], references: [areaId], onDelete: Restrict)
+  registeredByUser User               @relation("HouseholdRegisteredBy", fields: [registeredBy], references: [userId], onDelete: Restrict)
+  versions         HouseholdVersion[]
+  distributions    Distribution[]
+  conflicts        Conflict[]
+  duplicatePairsA  DuplicatePair[]    @relation("DuplicatePairA")
+  duplicatePairsB  DuplicatePair[]    @relation("DuplicatePairB")
+
+  @@index([areaId])
+  @@index([mobileNumber])
+  @@index([registeredBy])
+  @@map("household")
+}
+
+model HouseholdVersion {
+  versionId    String                @id @default(uuid()) @map("version_id") @db.Uuid
+  householdId  String                @map("household_id") @db.Uuid
+  version      Int
+  headName     String                @map("head_name")
+  mobileNumber String?               @map("mobile_number")
+  memberCount  Int                   @map("member_count")
+  changedBy    String                @map("changed_by") @db.Uuid
+  changeSource HouseholdChangeSource @map("change_source")
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  household     Household @relation(fields: [householdId], references: [householdId], onDelete: Restrict)
+  changedByUser User      @relation("HouseholdVersionChangedBy", fields: [changedBy], references: [userId], onDelete: Restrict)
+
+  @@unique([householdId, version])
+  @@map("household_version")
+}
+
+// ---------------------------------------------------------------------------
+// Distributions
+// ---------------------------------------------------------------------------
+
+model Distribution {
+  distributionId String             @id @default(uuid()) @map("distribution_id") @db.Uuid
+  householdId    String?            @map("household_id") @db.Uuid
+  areaId         String             @map("area_id") @db.Uuid
+  recordedBy     String             @map("recorded_by") @db.Uuid
+  distributedAt  DateTime           @map("distributed_at") @db.Timestamptz(3)
+  isAnonymous    Boolean            @default(false) @map("is_anonymous")
+  status         DistributionStatus @default(Active)
+  cancelReason   String?            @map("cancel_reason")
+  version        Int                @default(1)
+
+  household      Household?         @relation(fields: [householdId], references: [householdId], onDelete: Restrict)
+  area           Area               @relation(fields: [areaId], references: [areaId], onDelete: Restrict)
+  recordedByUser User               @relation("DistributionRecordedBy", fields: [recordedBy], references: [userId], onDelete: Restrict)
+  items          DistributionItem[]
+  flagsAsFirst   DistributionFlag[] @relation("FlagFirstDistribution")
+  flagsAsSecond  DistributionFlag[] @relation("FlagSecondDistribution")
+
+  @@index([householdId, distributedAt])
+  @@index([areaId, distributedAt])
+  @@index([recordedBy])
+  @@map("distribution")
+}
+
+model DistributionItem {
+  distributionId String @map("distribution_id") @db.Uuid
+  itemId         String @map("item_id") @db.Uuid
+  quantity       Int
+
+  distribution Distribution @relation(fields: [distributionId], references: [distributionId], onDelete: Cascade)
+  item         ReliefItem   @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+
+  @@id([distributionId, itemId])
+  @@index([itemId])
+  @@map("distribution_item")
+}
+
+// ---------------------------------------------------------------------------
+// Offline sync, conflicts, duplicates, flags
+// ---------------------------------------------------------------------------
+
+model SyncEvent {
+  /// Client-generated UUID — the idempotency key for offline replay.
+  eventId     String         @id @map("event_id") @db.Uuid
+  deviceId    String         @map("device_id") @db.Uuid
+  entityType  SyncEntityType @map("entity_type")
+  entityId    String         @map("entity_id") @db.Uuid
+  action      SyncAction
+  payload     Json
+  baseVersion Int            @map("base_version")
+  clientTime  DateTime       @map("client_time") @db.Timestamptz(3)
+  receivedAt  DateTime       @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  device    Device     @relation(fields: [deviceId], references: [deviceId], onDelete: Restrict)
+  conflicts Conflict[]
+
+  @@index([deviceId, receivedAt])
+  @@index([entityType, entityId])
+  @@map("sync_event")
+}
+
+model Conflict {
+  conflictId    String         @id @default(uuid()) @map("conflict_id") @db.Uuid
+  eventId       String         @map("event_id") @db.Uuid
+  householdId   String         @map("household_id") @db.Uuid
+  fieldName     String         @map("field_name")
+  localValue    String?        @map("local_value")
+  serverValue   String?        @map("server_value")
+  localUserId   String         @map("local_user_id") @db.Uuid
+  localDeviceId String         @map("local_device_id") @db.Uuid
+  clientTime    DateTime       @map("client_time") @db.Timestamptz(3)
+  resolvedValue String?        @map("resolved_value")
+  status        ConflictStatus @default(Open)
+  resolvedBy    String?        @map("resolved_by") @db.Uuid
+  resolvedAt    DateTime?      @map("resolved_at") @db.Timestamptz(3)
+
+  event          SyncEvent @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+  household      Household @relation(fields: [householdId], references: [householdId], onDelete: Restrict)
+  localUser      User      @relation("ConflictLocalUser", fields: [localUserId], references: [userId], onDelete: Restrict)
+  localDevice    Device    @relation(fields: [localDeviceId], references: [deviceId], onDelete: Restrict)
+  resolvedByUser User?     @relation("ConflictResolvedBy", fields: [resolvedBy], references: [userId], onDelete: Restrict)
+
+  @@index([status])
+  @@index([householdId])
+  @@map("conflict")
+}
+
+model DuplicatePair {
+  pairId       String              @id @default(uuid()) @map("pair_id") @db.Uuid
+  /// Canonical ordering: household_a_id < household_b_id (enforced by CHECK constraint)
+  householdAId String              @map("household_a_id") @db.Uuid
+  householdBId String              @map("household_b_id") @db.Uuid
+  score        Decimal             @db.Decimal(3, 2)
+  label        DuplicateLabel
+  status       DuplicatePairStatus @default(PendingReview)
+  reviewedBy   String?             @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime?           @map("reviewed_at") @db.Timestamptz(3)
+
+  householdA     Household @relation("DuplicatePairA", fields: [householdAId], references: [householdId], onDelete: Restrict)
+  householdB     Household @relation("DuplicatePairB", fields: [householdBId], references: [householdId], onDelete: Restrict)
+  reviewedByUser User?     @relation("DuplicatePairReviewedBy", fields: [reviewedBy], references: [userId], onDelete: Restrict)
+
+  @@unique([householdAId, householdBId])
+  @@index([status])
+  @@map("duplicate_pair")
+}
+
+model DistributionFlag {
+  flagId               String                 @id @default(uuid()) @map("flag_id") @db.Uuid
+  firstDistributionId  String                 @map("first_distribution_id") @db.Uuid
+  secondDistributionId String                 @map("second_distribution_id") @db.Uuid
+  status               DistributionFlagStatus @default(PendingReview)
+  reviewedBy           String?                @map("reviewed_by") @db.Uuid
+  reviewedAt           DateTime?              @map("reviewed_at") @db.Timestamptz(3)
+  note                 String?
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  firstDistribution  Distribution @relation("FlagFirstDistribution", fields: [firstDistributionId], references: [distributionId], onDelete: Restrict)
+  secondDistribution Distribution @relation("FlagSecondDistribution", fields: [secondDistributionId], references: [distributionId], onDelete: Restrict)
+  reviewedByUser     User?        @relation("DistributionFlagReviewedBy", fields: [reviewedBy], references: [userId], onDelete: Restrict)
+
+  @@unique([firstDistributionId, secondDistributionId])
+  @@index([status])
+  @@map("distribution_flag")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications and audit
+// ---------------------------------------------------------------------------
+
+model Notification {
+  notificationId String   @id @default(uuid()) @map("notification_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  type           String
+  message        String
+  linkPath       String   @map("link_path")
+  isRead         Boolean  @default(false) @map("is_read")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@map("notification")
+}
+
+/// Strictly append-only. UPDATE/DELETE are rejected by a database trigger.
+model AuditLog {
+  auditId        String   @id @default(uuid()) @map("audit_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  organisationId String?  @map("organisation_id") @db.Uuid
+  deviceId       String?  @map("device_id") @db.Uuid
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  oldValue       Json?    @map("old_value")
+  newValue       Json?    @map("new_value")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User?         @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  organisation Organisation? @relation(fields: [organisationId], references: [organisationId], onDelete: Restrict)
+  device       Device?       @relation(fields: [deviceId], references: [deviceId], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
+}

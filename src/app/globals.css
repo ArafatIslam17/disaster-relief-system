@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Design tokens — see CLAUDE.md §2. Utilitarian, sunlight-readable, flat.
+ * No gradients, no translucency, no shadows beyond a 1px hairline.
+ */
+@theme {
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-line: #cbd5e1;
+  --color-line-strong: #94a3b8;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-faint: #64748b;
+
+  --color-primary: #0f766e;
+  --color-primary-hover: #115e59;
+  --color-primary-fg: #ffffff;
+
+  --color-status-pending-fg: #b45309;
+  --color-status-pending-bg: #fef3c7;
+  --color-status-ok-fg: #15803d;
+  --color-status-ok-bg: #dcfce7;
+  --color-status-danger-fg: #b91c1c;
+  --color-status-danger-bg: #fee2e2;
+  --color-status-neutral-fg: #475569;
+  --color-status-neutral-bg: #f1f5f9;
+
+  --font-sans: var(--font-inter), "Hind Siliguri", system-ui, sans-serif;
+  --font-bangla: var(--font-hind-siliguri), var(--font-inter), system-ui, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  html[lang="bn"] body {
+    font-family: var(--font-bangla);
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+@utility font-bangla {
+  font-family: var(--font-bangla);
+}
+
+/* Tabular figures for short_code, mobile_number, score and counts. */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
