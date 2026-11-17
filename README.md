@@ -50,8 +50,8 @@ npm run test:dashboard         # portal + dashboard for every role at 1366×900
 APP_URL=https://your-app.vercel.app npm run demo:record
 ```
 
-Records one walkthrough clip per role into `demo-videos/` (see the header of `scripts/record-demo.spec.ts` for
-options). It signs in with the seeded demo accounts and changes data, so use a freshly seeded demo database only.
+Records one `.mp4` walkthrough clip per role into `demo-videos/` (see the header of `scripts/record-demo.spec.ts`
+for options). Conversion uses the bundled `ffmpeg-static` binary, so no separate ffmpeg install is needed. It signs in with the seeded demo accounts and changes data, so use a freshly seeded demo database only.
 
 ## Deploying (Vercel)
 

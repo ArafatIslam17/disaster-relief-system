@@ -3,14 +3,18 @@
  *
  *   APP_URL=https://your-app.vercel.app npm run demo:record
  *
- * Output: demo-videos/1-field-volunteer.webm … 5-observer.webm
+ * Output: demo-videos/1-field-volunteer.mp4 … 5-observer.mp4
  * (1280×720 for dashboard roles, 390×844 mobile for the field app).
+ * Playwright records .webm; each clip is converted to H.264 .mp4 and the raw .webm is deleted.
+ * ffmpeg is found in this order: FFMPEG_PATH, the bundled `ffmpeg-static` binary (installed by
+ * `npm install` on Windows/macOS/Linux), then `ffmpeg` on PATH. If none works, the .webm is kept.
  *
  * Options (environment variables):
  *   DEMO_ONLY=field,coordinator     record only some scenes (field, coordinator, opsadmin, sysadmin, observer)
  *   DEMO_PACE=1.5                   multiply every pause (slower = larger)
  *   DEMO_CAPTIONS=0                 hide the on-screen caption bar
- *   DEMO_MP4=1                      also convert each clip to .mp4 (needs ffmpeg on PATH)
+ *   DEMO_KEEP_WEBM=1                keep the raw .webm next to the .mp4
+ *   FFMPEG_PATH=/path/to/ffmpeg     use a specific ffmpeg binary
  *   DEMO_OUT=some/folder            output folder (default demo-videos)
  *
  * IMPORTANT: this signs in with the seeded demo accounts and CHANGES DATA (registers households,
@@ -19,7 +23,8 @@
  * finds the seeded conflict, duplicate pair and flag. Steps whose data is missing are skipped, not failed.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
@@ -32,6 +37,41 @@ const OUT = process.env.DEMO_OUT ?? "demo-videos";
 const PACE = Number(process.env.DEMO_PACE ?? "1") || 1;
 const CAPTIONS = process.env.DEMO_CAPTIONS !== "0";
 const ONLY = process.env.DEMO_ONLY?.split(",").map((s) => s.trim());
+
+/**
+ * Locates an ffmpeg binary. `ffmpeg-static` is an optional dependency, so it is loaded at runtime
+ * (not imported) and its absence never breaks type-checking or the app build.
+ */
+function findFfmpeg(): string | null {
+  const candidates: string[] = [];
+  if (process.env.FFMPEG_PATH) candidates.push(process.env.FFMPEG_PATH);
+  try {
+    const bundled = createRequire(__filename)("ffmpeg-static") as string | null;
+    if (bundled && existsSync(bundled)) candidates.push(bundled);
+  } catch {
+    // ffmpeg-static not installed (optional dependency); fall through to PATH.
+  }
+  candidates.push("ffmpeg");
+  for (const bin of candidates) {
+    if (spawnSync(bin, ["-version"], { stdio: "ignore" }).status === 0) return bin;
+  }
+  return null;
+}
+const FFMPEG = findFfmpeg();
+
+/** Converts a recording to a widely playable H.264 .mp4. Returns true when the .mp4 was written. */
+function toMp4(ffmpeg: string, webm: string, mp4: string): boolean {
+  const r = spawnSync(
+    ffmpeg,
+    // Even dimensions are required by yuv420p; +faststart lets the video start before it is fully downloaded.
+    ["-y", "-loglevel", "error", "-i", webm, "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-movflags", "+faststart", mp4],
+    { encoding: "utf8" },
+  );
+  if (r.status === 0 && existsSync(mp4) && statSync(mp4).size > 0) return true;
+  console.log(`  ! mp4 conversion failed: ${(r.stderr || r.error?.message || "unknown error").trim().split("\n").slice(-1)[0]}`);
+  rmSync(mp4, { force: true });
+  return false;
+}
 
 /** Seeded demo accounts (prisma/seed.ts). */
 const ACCOUNTS = {
@@ -116,16 +156,17 @@ async function record(browser: Browser, file: string, mobile: boolean, run: (pag
   await pause(page, 1000);
   const video = page.video();
   await context.close(); // flushes the video file
-  const target = path.join(OUT, `${file}.webm`);
-  if (video) {
-    rmSync(target, { force: true });
-    renameSync(await video.path(), target);
-    console.log(`  saved ${target}`);
-    if (process.env.DEMO_MP4 === "1") {
-      const mp4 = target.replace(/\.webm$/, ".mp4");
-      const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", target, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]);
-      console.log(r.status === 0 ? `  saved ${mp4}` : "  (mp4 skipped: ffmpeg not available)");
-    }
+  if (!video) return;
+  const webm = path.join(OUT, `${file}.webm`);
+  const mp4 = path.join(OUT, `${file}.mp4`);
+  rmSync(webm, { force: true });
+  renameSync(await video.path(), webm);
+  if (FFMPEG && toMp4(FFMPEG, webm, mp4)) {
+    if (process.env.DEMO_KEEP_WEBM !== "1") rmSync(webm, { force: true });
+    console.log(`  saved ${mp4}`);
+  } else {
+    // Never delete the only copy of a recording.
+    console.log(`  saved ${webm} (kept as .webm: no working ffmpeg; run "npm install" or set FFMPEG_PATH)`);
   }
 }
 
@@ -471,6 +512,7 @@ const SCENES: { key: Role; file: string; mobile: boolean; run: (p: Page) => Prom
 async function main() {
   mkdirSync(OUT, { recursive: true });
   console.log(`Recording against ${APP_URL} → ${OUT}/`);
+  console.log(FFMPEG ? `Converting to .mp4 with ${FFMPEG}` : "No ffmpeg found: clips will stay .webm");
   const browser = await chromium.launch({ slowMo: Math.round(120 * PACE) });
   for (const s of SCENES) {
     if (ONLY && !ONLY.includes(s.key)) continue;
